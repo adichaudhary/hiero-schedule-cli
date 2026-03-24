@@ -1,60 +1,71 @@
-# PR: Add `schedule` plugin — Hedera scheduled-transaction management
+# Hiero Schedule CLI Plugin
 
-## Summary
+`hiero-schedule-cli` is a repository that contains a `schedule` plugin for the Hiero CLI.
 
-This PR adds a new **`schedule`** plugin to the Hiero CLI that covers the full lifecycle of [Hedera Scheduled Transactions](https://docs.hedera.com/hedera/sdks-and-apis/sdks/schedule-transaction).
+It adds end-to-end support for Hedera scheduled transactions:
 
-| Command | What it does |
+- create a scheduled HBAR transfer
+- check current schedule state
+- watch until terminal state (`EXECUTED` or `DELETED`)
+
+## Commands
+
+| Command | Description |
 |---|---|
-| `schedule:create` | Wraps an HBAR transfer in a `ScheduleCreateTransaction` and submits it |
-| `schedule:status` | Queries the mirror node for the current state of a schedule |
-| `schedule:watch` | Polls the mirror node until the schedule reaches a terminal state (EXECUTED / DELETED) |
+| `schedule:create` | Wraps an HBAR transfer in `ScheduleCreateTransaction` and submits it |
+| `schedule:status` | Fetches a schedule from mirror node and returns `PENDING`, `EXECUTED`, or `DELETED` |
+| `schedule:watch` | Polls mirror node until `EXECUTED`, `DELETED`, or timeout |
 
-## Motivation
+### schedule:create options
 
-Scheduled transactions are a core Hedera primitive that allow accounts to pre-authorise future transfers. No existing plugin covers this workflow.
+- `--to` (required): recipient account ID, e.g. `0.0.1234`
+- `--amount` (required): tinybar amount as a non-negative integer string
+- `--expiry-seconds` (optional, default `2592000`): max `5184000`
+- `--memo` (optional): max 100 chars
 
-## Files changed
+### schedule:status options
 
-### Core (new field)
+- `--schedule-id` (required): schedule ID, e.g. `0.0.5678`
 
-| File | Change |
-|---|---|
-| `src/core/services/tx-execution/tx-execution-service.interface.ts` | `scheduleId?: string` added to `TransactionResult` **and** `TransactionReceipt` |
-| `src/core/services/tx-execution/tx-execution-service.ts` | `processTransactionResponse` now extracts `receipt.scheduleId?.toString()` |
+### schedule:watch options
 
-### New plugin
+- `--schedule-id` (required): schedule ID to watch
+- `--poll-interval` (optional, default `3`)
+- `--timeout` (optional, default `3600`)
+
+## Repository Structure
 
 ```
-src/plugins/schedule/
-├── manifest.ts
-├── index.ts
-├── commands/
-│   ├── create/
-│   │   ├── input.ts
-│   │   ├── output.ts
-│   │   ├── handler.ts
-│   │   └── index.ts
-│   ├── status/
-│   │   ├── input.ts, output.ts, handler.ts, index.ts
-│   └── watch/
-│       ├── input.ts, output.ts, handler.ts, index.ts
-└── __tests__/unit/
-    ├── create.test.ts
-    ├── status.test.ts
-    └── watch.test.ts
+src/
+    plugins/
+        schedule/
+            manifest.ts
+            index.ts
+            commands/
+                create/
+                status/
+                watch/
+            __tests__/unit/
 ```
 
-## How to apply
+## Integrating Into Hiero CLI
 
-Copy the folders from this directory into the root of your `hiero-ledger/hiero-cli` fork,
-then apply the two-line change to `tx-execution-service.ts` described in `CORE_DIFF.md`.
+1. Copy `src/plugins/schedule` into your Hiero CLI repository.
+2. Apply the core tx-execution changes documented in `CORE_DIFF.md`.
+3. Register the schedule plugin manifest in your CLI plugin loader/registry.
+
+Without the core patch in `CORE_DIFF.md`, `schedule:create` may succeed on-chain but fail to return `scheduleId` from tx execution results.
 
 ## Testing
 
+From your Hiero CLI repository root:
+
 ```bash
-# From the hiero-cli repo root
 npx jest src/plugins/schedule --coverage
 ```
 
-All 3 test suites pass (create, status, watch).
+Unit tests included in this repo:
+
+- `create.test.ts`
+- `status.test.ts`
+- `watch.test.ts`
