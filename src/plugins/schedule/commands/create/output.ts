@@ -38,6 +38,9 @@ export const CreateOutputSchema = z.object({
    * Only present when dryRun === true.
    */
   feeEstimateTinybars: z.string().optional(),
+
+  /** Tags applied to the schedule in the local registry. */
+  tags: z.array(z.string()).optional(),
 });
 
 export type CreateScheduleOutput = z.infer<typeof CreateOutputSchema>;
@@ -57,5 +60,6 @@ Scheduled Transaction Created
   Network:        {{network}}
 {{#if memo}}  Memo:           {{memo}}
 {{/if}}
-{{#unless dryRun}}Use \`schedule:status --schedule-id {{scheduleId}}\` to track execution.{{/unless}}
+{{#if tags}}  Tags:           {{#each tags}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+{{/if}}{{#unless dryRun}}Use \`schedule:status --schedule-id {{scheduleId}}\` to track execution.{{/unless}}
 `.trim();

@@ -16,7 +16,14 @@ export const WatchInputSchema = z.object({
    * Maximum number of seconds to wait before giving up.
    * Defaults to 3600 (1 hour).
    */
-  timeout: z.number().int().positive().optional().default(3600),
+  timeout: z.number().int().nonnegative().optional().default(3600),
+
+  /**
+   * HTTPS URL to POST a JSON payload to when a terminal state is reached.
+   * The payload matches the WebhookPayload interface.
+   * Omit to disable webhook notifications.
+   */
+  'webhook-url': z.string().url().optional(),
 });
 
 export type WatchInput = z.infer<typeof WatchInputSchema>;

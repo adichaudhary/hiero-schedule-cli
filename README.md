@@ -3,12 +3,16 @@
 [![CI](https://github.com/hiero-ledger/hiero-schedule/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-ledger/hiero-schedule/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-A plugin for [hiero-cli](https://github.com/hiero-ledger/hiero-cli) that adds end-to-end support for Hedera scheduled transactions:
+A plugin for [hiero-cli](https://github.com/hiero-ledger/hiero-cli) that adds comprehensive support for Hedera scheduled transactions:
 
-- **Create** a scheduled HBAR transfer
-- **Sign** an existing schedule to add your signature
-- **Check** the current lifecycle state (`PENDING`, `EXECUTED`, `DELETED`)
-- **Watch** until terminal state or timeout
+| Capability | Feature |
+|---|---|
+| Create | Scheduled HBAR transfer with templates, time expressions, file input, and policy guardrails |
+| Sign | Single-key (`schedule:sign`) and multi-key (`schedule:cosign`) signature submission |
+| Inspect | Live state (`schedule:status`), signature detail (`schedule:signers`) |
+| Track | Mirror polling engine (`schedule:watch`) with webhook callbacks |
+| Automate | Recurring payment scheduler (`schedule:recurring`) |
+| Organise | Local registry (`schedule:list`) with tag and label system |
 
 ## Prerequisites
 
@@ -18,7 +22,7 @@ A plugin for [hiero-cli](https://github.com/hiero-ledger/hiero-cli) that adds en
 
 ## Installation
 
-### As a standalone development repo
+### Standalone development repo
 
 ```bash
 git clone https://github.com/hiero-ledger/hiero-schedule.git
@@ -28,96 +32,223 @@ npm install
 
 ### Integrating into hiero-cli
 
-1. Copy `src/plugins/schedule/` into your hiero-cli `src/plugins/` directory.
-2. Apply the core patch documented in [CORE_DIFF.md](CORE_DIFF.md) to expose `scheduleId` in `TxExecutionService`.
-3. Register the manifest in your plugin loader:
+1. Copy `src/plugins/schedule/` into `src/plugins/` in your hiero-cli repo.
+2. Apply the patch in [CORE_DIFF.md](CORE_DIFF.md) to expose `scheduleId` in `TxExecutionService`.
+3. Register the manifest:
 
 ```typescript
 import { manifest as scheduleManifest } from './plugins/schedule';
-
 pluginRegistry.register(scheduleManifest);
 ```
 
 ## Quickstart
 
 ```bash
-# Create a scheduled HBAR transfer (held until all signers approve)
-hiero schedule:create --to 0.0.1234 --amount 50000000 --memo "season-1"
+# Create a scheduled HBAR transfer
+hiero schedule:create --to 0.0.1234 --amount 50000000
 
-# Preview without submitting (shows fee estimate)
+# Using a template (sets expiry and memo automatically)
+hiero schedule:create --to 0.0.1234 --amount 50000000 --template vesting
+
+# Human-readable time expressions
+hiero schedule:create --to 0.0.1234 --amount 50000000 --execute-in 30d
+hiero schedule:create --to 0.0.1234 --amount 50000000 --execute-at 2025-06-30T00:00:00Z
+
+# Load parameters from a JSON file
+hiero schedule:create --from-file ./payment.json --tag "finance,q4"
+
+# Preview without submitting
 hiero schedule:create --to 0.0.1234 --amount 50000000 --dry-run
 
-# Add your operator's signature to an existing schedule
+# Enforce a policy (e.g. max amount, allowed recipients)
+hiero schedule:create --to 0.0.1234 --amount 100 --policy-file ./my-policy.json
+
+# Sign with a single key
 hiero schedule:sign --schedule-id 0.0.5678
 
-# Check current state (PENDING / EXECUTED / DELETED)
+# Sign with multiple keys at once
+hiero schedule:cosign --schedule-id 0.0.5678 --signer-keys "key-alice,key-bob,key-treasury"
+
+# Check who has signed so far
+hiero schedule:signers --schedule-id 0.0.5678
+
+# Check state (PENDING / EXECUTED / DELETED)
 hiero schedule:status --schedule-id 0.0.5678
 
-# Block until executed, deleted, or 10-minute timeout
-hiero schedule:watch --schedule-id 0.0.5678 --timeout 600
+# Poll until executed, deleted, or 10-minute timeout; POST webhook on completion
+hiero schedule:watch --schedule-id 0.0.5678 --timeout 600 --webhook-url https://hooks.example.com/notify
+
+# Pre-schedule 12 monthly payments
+hiero schedule:recurring --to 0.0.1234 --amount 50000000 --count 12 --memo "Monthly salary"
+
+# List all locally tracked schedules
+hiero schedule:list
+hiero schedule:list --tag finance --state PENDING
 ```
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `schedule:create` | Wraps an HBAR transfer in `ScheduleCreateTransaction` and submits it |
-| `schedule:sign` | Adds the operator signature to an existing schedule |
-| `schedule:status` | Returns current state from mirror node (`PENDING` / `EXECUTED` / `DELETED`) |
-| `schedule:watch` | Polls mirror node until terminal state or timeout |
-
 ### schedule:create
+
+Wraps an HBAR transfer in `ScheduleCreateTransaction` and submits it.
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `--to` | yes | — | Recipient account ID (e.g. `0.0.1234`) |
-| `--amount` | yes | — | Amount in tinybars (e.g. `50000000` = 0.5 HBAR) |
-| `--expiry-seconds` | no | `2592000` | Seconds until expiry (max `5184000` = 60 days) |
-| `--memo` | no | — | Memo stored on the schedule (max 100 chars) |
-| `--dry-run` | no | `false` | Build the transaction without submitting; shows fee estimate |
+| `--to` | yes | — | Recipient account ID |
+| `--amount` | yes | — | Tinybars to transfer |
+| `--expiry-seconds` | no | `2592000` | Seconds until expiry |
+| `--execute-in` | no | — | Duration expression (`30d`, `2w`, `1h`). Overrides `--expiry-seconds` |
+| `--execute-at` | no | — | ISO-8601 or epoch seconds. Overrides `--expiry-seconds` |
+| `--memo` | no | — | Memo (max 100 chars) |
+| `--template` | no | — | `vesting` \| `escrow` \| `recurring-payment` |
+| `--from-file` | no | — | Path to JSON file with field values (CLI flags win) |
+| `--tag` | no | — | Comma-separated tags for local registry |
+| `--policy-file` | no | `~/.hiero/schedule-policy.json` | Policy guardrail config |
+| `--dry-run` | no | `false` | Build without submitting; shows fee estimate |
 
 ### schedule:sign
 
+Adds the operator's signature to an existing schedule.
+
 | Option | Required | Description |
 |---|---|---|
-| `--schedule-id` | yes | Schedule ID to sign (e.g. `0.0.5678`) |
+| `--schedule-id` | yes | Schedule to sign |
+
+### schedule:cosign — Multi-Signature Coordination Layer
+
+Submits a `ScheduleSignTransaction` for each key in `--signer-keys`. All keys are attempted even when one fails; partial results are reported per-key.
+
+| Option | Required | Description |
+|---|---|---|
+| `--schedule-id` | yes | Schedule to sign |
+| `--signer-keys` | yes | Comma-separated key ref IDs (e.g. `key-alice,key-bob`) |
+
+### schedule:signers — Pending Signer Tracking
+
+Shows every signature collected so far (public key prefix + type).
+
+| Option | Required | Description |
+|---|---|---|
+| `--schedule-id` | yes | Schedule to inspect |
 
 ### schedule:status
 
+Returns `PENDING`, `EXECUTED`, or `DELETED` plus signature count from the mirror node.
+
 | Option | Required | Description |
 |---|---|---|
-| `--schedule-id` | yes | Schedule ID to look up |
+| `--schedule-id` | yes | Schedule to check |
 
-### schedule:watch
+### schedule:watch — Mirror Polling Engine
+
+Polls the mirror node until a terminal state or timeout. Fires an optional webhook.
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `--schedule-id` | yes | — | Schedule ID to watch |
-| `--poll-interval` | no | `3` | Polling interval in seconds |
-| `--timeout` | no | `3600` | Max seconds to wait before exiting |
+| `--schedule-id` | yes | — | Schedule to watch |
+| `--poll-interval` | no | `3` | Seconds between polls |
+| `--timeout` | no | `3600` | Max wait in seconds |
+| `--webhook-url` | no | — | HTTPS endpoint to POST on terminal state |
+
+### schedule:recurring — Recurring Scheduler Engine
+
+Pre-schedules N HBAR transfers with staggered expiry windows.
+
+| Option | Required | Default | Description |
+|---|---|---|---|
+| `--to` | yes | — | Recipient for all payments |
+| `--amount` | yes | — | Tinybars per payment |
+| `--count` | yes | — | Number of schedules (max 50) |
+| `--interval-seconds` | no | `2592000` | Expiry offset between consecutive schedules |
+| `--first-expiry-seconds` | no | `2592000` | Expiry of the first schedule |
+| `--memo` | no | — | Base memo; `(N of M)` appended per schedule |
+
+### schedule:list — Local Schedule Registry
+
+Lists schedules recorded in the local registry with tag/state/network filtering.
+
+| Option | Required | Description |
+|---|---|---|
+| `--tag` | no | Filter by tag |
+| `--network` | no | Filter by network (`testnet`, `mainnet`) |
+| `--state` | no | `PENDING` \| `EXECUTED` \| `DELETED` \| `UNKNOWN` |
+| `--registry-file` | no | Custom registry path (default: `~/.hiero/schedule-registry.json`) |
+
+## Schedule Templates
+
+Templates set default expiry windows and memo prefixes for common use cases.
+
+| Template | Expiry | Memo prefix | Use case |
+|---|---|---|---|
+| `vesting` | 60 days (network max) | `[vesting]` | Token vesting arrangements |
+| `escrow` | 7 days | `[escrow]` | Two-party escrow settlements |
+| `recurring-payment` | 30 days | `[recurring]` | Periodic payment series |
+
+## Policy Guardrails
+
+Create `~/.hiero/schedule-policy.json` (or pass `--policy-file`) to enforce limits:
+
+```json
+{
+  "maxAmountTinybars": "1000000000",
+  "allowedRecipients": ["0.0.1234", "0.0.5678"],
+  "blockedRecipients": ["0.0.9999"],
+  "maxExpirySeconds": 2592000
+}
+```
+
+## Webhook Payload
+
+When `--webhook-url` is set on `schedule:watch`, this JSON body is POSTed:
+
+```json
+{
+  "scheduleId": "0.0.5678",
+  "finalState": "EXECUTED",
+  "resolvedAt": "2025-01-01T00:00:00.000Z",
+  "elapsedSeconds": 42,
+  "network": "testnet"
+}
+```
+
+## Transaction Builder (--from-file)
+
+Pass `--from-file ./payment.json` to load parameters. CLI flags override file values.
+
+```json
+{
+  "to": "0.0.1234",
+  "amount": "50000000",
+  "expiry-seconds": 2592000,
+  "memo": "Monthly payment",
+  "tag": "finance,monthly"
+}
+```
 
 ## Lifecycle States
-
-A scheduled transaction moves through the following states:
 
 ```
 PENDING → EXECUTED   (all required signatures collected before expiry)
 PENDING → DELETED    (manually cancelled, expired, or superseded)
 ```
 
-`TIMEOUT` is a polling sentinel returned by `schedule:watch` when the watch window elapses before a terminal on-chain state is reached.
+`TIMEOUT` is a watch-only sentinel — returned when the polling window elapses before a terminal state is reached on-chain.
 
-See [src/plugins/schedule/lifecycle.ts](src/plugins/schedule/lifecycle.ts) for the formal state model.
+See [lifecycle.ts](src/plugins/schedule/lifecycle.ts) for the formal `ScheduleState` enum.
+
+## Local Registry
+
+Every successful `schedule:create` is automatically recorded in `~/.hiero/schedule-registry.json`. Use `schedule:list` to query it. The registry is a plain JSON file and can be edited manually.
 
 ## Structured Output
 
-All commands return structured JSON via `--output json` (handled by the hiero-cli core):
+All commands return JSON via `--output json` (handled by the hiero-cli core):
 
 ```bash
 hiero schedule:status --schedule-id 0.0.5678 --output json
 ```
 
-Output schemas are defined using Zod in each command's `output.ts` file.
+Zod output schemas are in each command's `output.ts` file.
 
 ## Repository Structure
 
@@ -126,15 +257,20 @@ src/
   core/                          # Type stubs mirroring hiero-cli core
   plugins/
     schedule/
-      lifecycle.ts               # Formal ScheduleState enum + helpers
-      manifest.ts                # Plugin manifest (all 4 commands)
-      index.ts                   # Public API re-exports
+      lifecycle.ts               # ScheduleState enum + helpers
+      manifest.ts                # Plugin manifest (all 8 commands)
+      index.ts                   # Clean public API re-exports
+      templates/                 # Vesting, escrow, recurring-payment presets
+      registry/                  # Local JSON schedule registry
+      utils/
+        time-parse.ts            # --execute-in / --execute-at parsing
+        policy.ts                # Guardrail validation
+        webhook.ts               # Terminal-state callbacks
+        collect-signatures.ts    # Multi-key signing utility
       commands/
-        create/                  # schedule:create
-        sign/                    # schedule:sign
-        status/                  # schedule:status
-        watch/                   # schedule:watch
-      __tests__/unit/            # Jest unit tests
+        create/   sign/   cosign/   signers/
+        status/   watch/  recurring/  list/
+      __tests__/unit/            # Jest unit tests (12 test files)
 ```
 
 ## Running Tests

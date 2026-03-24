@@ -15,6 +15,7 @@ import type {
 import { Status } from '@/core/shared/constants';
 import { formatError } from '@/core/utils/errors';
 import { deriveScheduleState, ScheduleState } from '../../lifecycle';
+import { notifyWebhook } from '../../utils/webhook';
 
 import { WatchInputSchema } from './input';
 import type { WatchOutput } from './output';
@@ -37,6 +38,7 @@ export async function watchSchedule(
   const scheduleId = validArgs['schedule-id'];
   const pollMs = validArgs['poll-interval'] * 1000;
   const timeoutMs = validArgs.timeout * 1000;
+  const webhookUrl = validArgs['webhook-url'];
 
   const network = api.network.getCurrentNetwork();
   const networkConfig = api.network.getNetworkConfig(network);
@@ -62,6 +64,14 @@ export async function watchSchedule(
           network,
         };
         logger.info(`Watch timed-out after ${output.elapsedSeconds}s.`);
+
+        if (webhookUrl) {
+          const webhookResult = await notifyWebhook(webhookUrl, output);
+          if (!webhookResult.ok) {
+            logger.warn(`Webhook notification failed: ${webhookResult.error}`);
+          }
+        }
+
         return {
           status: Status.Success,
           outputJson: JSON.stringify(output),
@@ -97,6 +107,16 @@ export async function watchSchedule(
           network,
         };
         logger.info(`Schedule ${scheduleId} has been ${state}.`);
+
+        if (webhookUrl) {
+          const webhookResult = await notifyWebhook(webhookUrl, output);
+          if (webhookResult.ok) {
+            logger.info(`Webhook notified: ${webhookUrl}`);
+          } else {
+            logger.warn(`Webhook notification failed: ${webhookResult.error}`);
+          }
+        }
+
         return {
           status: Status.Success,
           outputJson: JSON.stringify(output),

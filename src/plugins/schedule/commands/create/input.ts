@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { EntityIdSchema } from '@/core/schemas/common-schemas';
+import { TEMPLATE_NAMES } from '../../templates';
 
 /**
  * Zod schema for `schedule:create` command arguments.
@@ -40,6 +41,42 @@ export const CreateInputSchema = z.object({
    * network.  Returns an estimated fee instead of a real scheduleId.
    */
   'dry-run': z.boolean().optional().default(false),
+
+  /**
+   * Human-readable duration from now until the schedule should execute.
+   * Examples: "30d", "2w", "1h".  Overrides --expiry-seconds.
+   */
+  'execute-in': z.string().optional(),
+
+  /**
+   * Absolute ISO-8601 datetime (or epoch seconds) for the execution deadline.
+   * Examples: "2024-12-31T00:00:00Z", "1735689600".  Overrides --expiry-seconds.
+   */
+  'execute-at': z.string().optional(),
+
+  /**
+   * Comma-separated tags for local registry grouping and filtering.
+   * Example: "finance,q4,vesting"
+   */
+  tag: z.string().optional(),
+
+  /**
+   * Path to a JSON file containing schedule:create field values.
+   * CLI flags take precedence over file values.
+   */
+  'from-file': z.string().optional(),
+
+  /**
+   * Apply a named template's default values before CLI flags.
+   * Available: vesting, escrow, recurring-payment.
+   */
+  template: z.enum(TEMPLATE_NAMES as [string, ...string[]]).optional(),
+
+  /**
+   * Path to a policy JSON file.  Defaults to ~/.hiero/schedule-policy.json.
+   * Set to "" to disable policy checks.
+   */
+  'policy-file': z.string().optional(),
 });
 
 export type CreateInput = z.infer<typeof CreateInputSchema>;
