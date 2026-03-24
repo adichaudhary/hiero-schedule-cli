@@ -22,6 +22,29 @@ Signed-off-by: Your Name <your@email.com>
 
 Commits without a `Signed-off-by` line will not be merged.
 
+## GPG Signed Commits
+
+All commits in this repository must be GPG signed. Configure Git to sign your commits before opening a pull request:
+
+```bash
+# Generate a key if you don't have one
+gpg --full-generate-key
+
+# List your keys and copy the key ID
+gpg --list-secret-keys --keyid-format=long
+
+# Tell Git to use it
+git config --global user.signingkey <your-key-id>
+git config --global commit.gpgsign true
+
+# Export the public key and add it to your GitHub account
+gpg --armor --export <your-key-id>
+```
+
+Add the exported public key at **GitHub → Settings → SSH and GPG keys → New GPG key**.
+
+Commits without a GPG signature will not be merged.
+
 ## Getting Started
 
 ```bash
