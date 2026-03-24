@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx vite:*)",
+      "Bash(curl -s \"https://testnet.mirrornode.hedera.com/api/v1/schedules?limit=1&order=desc\")",
+      "Bash(git log:*)",
+      "Bash(find src:*)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(npm test:*)",
+      "Bash(curl -s https://api.github.com/repos/adichaudhary/hiero-schedule-cli)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''private:'''', d.get\\(''''private''''\\)\\); print\\(''''license:'''', d.get\\(''''license'''', {}\\).get\\(''''spdx_id''''\\) if d.get\\(''''license''''\\) else ''''none''''\\)\")"
+    ]
+  }
+}

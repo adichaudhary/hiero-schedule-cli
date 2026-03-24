@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hiero Schedule Dashboard</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">◈</span>
+          <span class="logo-text">Hiero Schedule</span>
+        </div>
+        <select id="network-select">
+          <option value="testnet">Testnet</option>
+          <option value="mainnet">Mainnet</option>
+          <option value="previewnet">Previewnet</option>
+        </select>
+      </div>
+    </header>
+
+    <main>
+      <div class="search-bar">
+        <input
+          id="schedule-input"
+          type="text"
+          placeholder="Schedule ID (e.g. 0.0.12345)"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="search-btn">Lookup</button>
+        <button id="create-btn" class="btn-outline">+ Create</button>
+      </div>
+
+      <!-- Create form (hidden by default) -->
+      <div id="create-form" style="display:none"></div>
+
+      <div class="tabs" id="tabs" style="display:none">
+        <button class="tab active" data-tab="status">Status</button>
+        <button class="tab" data-tab="signers">Signers</button>
+        <button class="tab" data-tab="watch">Watch</button>
+      </div>
+
+      <div id="panel" class="panel">
+        <div class="empty-state">
+          <div class="empty-icon">◈</div>
+          <p>Enter a schedule ID to look it up, or click <strong>+ Create</strong> to schedule a new transfer.</p>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
