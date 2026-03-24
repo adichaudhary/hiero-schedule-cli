@@ -9,7 +9,10 @@
     "build": "tsc -p tsconfig.json",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "release:dry": "npm pack --dry-run",
+    "release:tag": "git tag -a v$(node -p \"require('./package.json').version\") -m \"Release v$(node -p \"require('./package.json').version\")\"",
+    "release:publish": "npm publish --access public"
   },
   "peerDependencies": {
     "@hashgraph/sdk": "^2.0.0",

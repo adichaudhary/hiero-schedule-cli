@@ -77,3 +77,12 @@ export { RecurringOutputSchema, RECURRING_HUMAN_TEMPLATE, type RecurringOutput, 
 export { listSchedules } from './commands/list/handler';
 export { ListInputSchema, type ListInput } from './commands/list/input';
 export { ListOutputSchema, LIST_HUMAN_TEMPLATE, type ListEntry, type ListOutput } from './commands/list/output';
+
+// ── Config profiles ───────────────────────────────────────────────────────────
+export { loadProfile, saveProfile, deleteProfile, listProfiles, ProfileNotFoundError } from './config';
+export type { ScheduleProfile } from './config';
+
+// ── schedule:viz ──────────────────────────────────────────────────────────────
+export { vizSchedule } from './commands/viz/handler';
+export { VizInputSchema, type VizInput } from './commands/viz/input';
+export { VizOutputSchema, VIZ_HUMAN_TEMPLATE, type VizOutput } from './commands/viz/output';

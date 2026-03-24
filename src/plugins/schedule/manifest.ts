@@ -18,6 +18,8 @@ import { getScheduleStatus } from './commands/status/handler';
 import { STATUS_HUMAN_TEMPLATE, StatusOutputSchema } from './commands/status/output';
 import { watchSchedule } from './commands/watch/handler';
 import { WATCH_HUMAN_TEMPLATE, WatchOutputSchema } from './commands/watch/output';
+import { vizSchedule } from './commands/viz/handler';
+import { VIZ_HUMAN_TEMPLATE, VizOutputSchema } from './commands/viz/output';
 
 export const manifest: PluginManifest = {
   name: 'schedule',
@@ -165,6 +167,21 @@ export const manifest: PluginManifest = {
       ],
       handler: listSchedules,
       output: { schema: ListOutputSchema, humanTemplate: LIST_HUMAN_TEMPLATE },
+    },
+
+    // ── schedule:viz ──────────────────────────────────────────────────────────
+    {
+      name: 'schedule:viz',
+      summary: 'Render an ASCII lifecycle timeline for a scheduled transaction',
+      description:
+        'Fetches schedule metadata from the mirror node and renders an ASCII timeline ' +
+        'showing the lifecycle stages: CREATED → PENDING → EXECUTED | DELETED, ' +
+        'along with signature progress and key timestamps.',
+      options: [
+        { name: 'schedule-id', type: OptionType.STRING, description: 'Schedule to visualize', required: true },
+      ],
+      handler: vizSchedule,
+      output: { schema: VizOutputSchema, humanTemplate: VIZ_HUMAN_TEMPLATE },
     },
   ],
 };

@@ -9,10 +9,12 @@ A plugin for [hiero-cli](https://github.com/hiero-ledger/hiero-cli) that adds co
 |---|---|
 | Create | Scheduled HBAR transfer with templates, time expressions, file input, and policy guardrails |
 | Sign | Single-key (`schedule:sign`) and multi-key (`schedule:cosign`) signature submission |
-| Inspect | Live state (`schedule:status`), signature detail (`schedule:signers`) |
-| Track | Mirror polling engine (`schedule:watch`) with webhook callbacks |
+| Inspect | Live state (`schedule:status`), signature detail (`schedule:signers`), ASCII timeline (`schedule:viz`) |
+| Track | Mirror polling engine (`schedule:watch`) with exponential backoff and webhook callbacks |
 | Automate | Recurring payment scheduler (`schedule:recurring`) |
-| Organise | Local registry (`schedule:list`) with tag and label system |
+| Organise | Local registry (`schedule:list`) with tag and label system, named config profiles |
+| SDK | Programmatic JS/TS layer (`ScheduleClient`, `ScheduleWatcher`, `MirrorClient`) — no CLI needed |
+| Browser | `fetchScheduleStatus`, `fetchScheduleSigners`, `ScheduleStatusPoller` (no Node.js deps) |
 
 ## Prerequisites
 
@@ -84,6 +86,9 @@ hiero schedule:recurring --to 0.0.1234 --amount 50000000 --count 12 --memo "Mont
 # List all locally tracked schedules
 hiero schedule:list
 hiero schedule:list --tag finance --state PENDING
+
+# ASCII lifecycle visualization
+hiero schedule:viz --schedule-id 0.0.5678
 ```
 
 ## Commands
@@ -250,16 +255,126 @@ hiero schedule:status --schedule-id 0.0.5678 --output json
 
 Zod output schemas are in each command's `output.ts` file.
 
+## Programmatic SDK
+
+Use hiero-schedule from your own application without the CLI:
+
+```typescript
+import { ScheduleClient } from '@hiero-ledger/schedule-plugin/sdk';
+
+const client = new ScheduleClient({ network: 'testnet' });
+
+// One-shot status check
+const status = await client.getStatus('0.0.5678');
+console.log(status.state); // 'PENDING' | 'EXECUTED' | 'DELETED'
+
+// Watch until terminal state
+const watcher = client.createWatcher('0.0.5678', { timeoutSeconds: 300 });
+watcher.on('executed', (e) => console.log('Executed at', e.resolvedAt));
+watcher.on('poll', (e) => console.log(`Poll #${e.pollCount}: ${e.state}`));
+await watcher.start();
+```
+
+### Mirror failover + exponential backoff
+
+```typescript
+import { MirrorClient, BackoffTimer } from '@hiero-ledger/schedule-plugin/sdk';
+
+const client = new MirrorClient({
+  urls: [
+    'https://mainnet-public.mirrornode.hedera.com',
+    'https://mirror.hashionode.com', // fallback
+  ],
+  backoff: { initialMs: 1000, maxMs: 30_000, multiplier: 2 },
+});
+```
+
+## Browser Layer
+
+Import the browser-safe module for use in React, Vue, or plain JS — no Node.js dependencies:
+
+```typescript
+import { fetchScheduleStatus, ScheduleStatusPoller } from '@hiero-ledger/schedule-plugin/browser';
+
+// One-shot
+const status = await fetchScheduleStatus('0.0.5678', 'testnet');
+
+// Polling (React example)
+const poller = new ScheduleStatusPoller({
+  scheduleId: '0.0.5678',
+  network: 'testnet',
+  intervalMs: 5_000,
+  onPoll: (s) => setStatus(s),
+  onTerminal: (s) => setDone(true),
+});
+poller.start();
+// cleanup: poller.stop();
+```
+
+## Config Profiles
+
+Switch environments without repeating flags:
+
+```typescript
+import { loadProfile, saveProfile } from '@hiero-ledger/schedule-plugin';
+
+// Use a built-in profile (testnet / mainnet / previewnet)
+const profile = loadProfile('mainnet');
+
+// Save a custom profile
+saveProfile({
+  name: 'staging',
+  network: 'testnet',
+  mirrorNodeUrl: 'https://mirror.staging.internal',
+  policyFile: '/etc/hiero/staging-policy.json',
+});
+```
+
+## JSON Schema Validation
+
+All command input/output types are exported as draft-07 JSON Schemas:
+
+```typescript
+import { schemas } from '@hiero-ledger/schedule-plugin/sdk';
+
+// Validate an external payload before passing to the CLI
+const schema = schemas['schedule:create'].input;
+console.log(JSON.stringify(schema, null, 2));
+```
+
+## Examples
+
+See [`examples/`](examples/) for runnable integrations:
+
+| File | Description |
+|---|---|
+| `basic-transfer.ts` | Status check + watch loop |
+| `multisig-escrow.ts` | Multi-sig workflow with exponential backoff |
+| `recurring-payments.ts` | Batch status table for recurring schedules |
+| `vesting-schedule.ts` | Combined status + signers summary |
+| `monitor-with-webhook.ts` | Watch + webhook notification via SDK |
+
 ## Repository Structure
 
 ```
 src/
   core/                          # Type stubs mirroring hiero-cli core
+  sdk/                           # Programmatic JS/TS SDK (no CLI infrastructure)
+    mirror-client.ts             # MirrorClient (failover) + BackoffTimer
+    schedule-watcher.ts          # ScheduleWatcher (typed EventEmitter)
+    schedule-client.ts           # ScheduleClient: getStatus / getSigners / createWatcher
+    json-schemas.ts              # zodToJsonSchema() + pre-built schemas for all commands
+    index.ts                     # SDK public exports
+  browser/                       # Browser-safe layer (no fs / os / EventEmitter)
+    schedule-status-poller.ts    # fetchScheduleStatus / fetchScheduleSigners / ScheduleStatusPoller
+    index.ts
   plugins/
     schedule/
       lifecycle.ts               # ScheduleState enum + helpers
-      manifest.ts                # Plugin manifest (all 8 commands)
+      manifest.ts                # Plugin manifest (all 9 commands)
       index.ts                   # Clean public API re-exports
+      config/
+        profiles.ts              # Named env profiles (testnet / mainnet / previewnet + custom)
       templates/                 # Vesting, escrow, recurring-payment presets
       registry/                  # Local JSON schedule registry
       utils/
@@ -269,9 +384,18 @@ src/
         collect-signatures.ts    # Multi-key signing utility
       commands/
         create/   sign/   cosign/   signers/
-        status/   watch/  recurring/  list/
-      __tests__/unit/            # Jest unit tests (12 test files)
+        status/   watch/  recurring/  list/  viz/
+      __tests__/unit/            # Jest unit tests (13 test files, 118 tests)
+examples/                        # Runnable integration examples
 ```
+
+### schedule:viz — Lifecycle Visualization
+
+Renders an ASCII timeline showing the current lifecycle stage and signature progress.
+
+| Option | Required | Description |
+|---|---|---|
+| `--schedule-id` | yes | Schedule to visualize |
 
 ## Running Tests
 
