@@ -8,7 +8,9 @@ import {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3001';
+// In production (Vercel) set VITE_API_BASE to point to your own server.
+// Read-only features (status, signers, watch, viz) work without it.
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:3001';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
