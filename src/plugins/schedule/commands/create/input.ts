@@ -34,6 +34,12 @@ export const CreateInputSchema = z.object({
 
   /** Optional human-readable memo stored on the scheduled transaction. */
   memo: z.string().max(100).optional(),
+
+  /**
+   * When true, the transaction is built and validated but NOT submitted to the
+   * network.  Returns an estimated fee instead of a real scheduleId.
+   */
+  'dry-run': z.boolean().optional().default(false),
 });
 
 export type CreateInput = z.infer<typeof CreateInputSchema>;

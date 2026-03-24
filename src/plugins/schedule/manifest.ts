@@ -4,6 +4,8 @@ import { OptionType } from '@/core/shared/constants';
 
 import { createSchedule } from './commands/create/handler';
 import { CREATE_HUMAN_TEMPLATE, CreateOutputSchema } from './commands/create/output';
+import { signSchedule } from './commands/sign/handler';
+import { SIGN_HUMAN_TEMPLATE, SignOutputSchema } from './commands/sign/output';
 import { getScheduleStatus } from './commands/status/handler';
 import { STATUS_HUMAN_TEMPLATE, StatusOutputSchema } from './commands/status/output';
 import { watchSchedule } from './commands/watch/handler';
@@ -38,7 +40,7 @@ export const manifest: PluginManifest = {
         {
           name: 'expiry-seconds',
           type: OptionType.NUMBER,
-          description: 'Seconds from now until the schedule expires (default: 2592000 = 30 days)',  
+          description: 'Seconds from now until the schedule expires (default: 2592000 = 30 days)',
           required: false,
         },
         {
@@ -46,6 +48,13 @@ export const manifest: PluginManifest = {
           type: OptionType.STRING,
           description: 'Optional memo stored on the scheduled transaction (max 100 chars)',
           required: false,
+        },
+        {
+          name: 'dry-run',
+          type: OptionType.BOOLEAN,
+          description: 'Build and validate the transaction without submitting it; shows fee estimate',
+          required: false,
+          default: false,
         },
       ],
       handler: createSchedule,
@@ -73,6 +82,28 @@ export const manifest: PluginManifest = {
       output: {
         schema: StatusOutputSchema,
         humanTemplate: STATUS_HUMAN_TEMPLATE,
+      },
+    },
+
+    {
+      name: 'schedule:sign',
+      summary: 'Add the operator signature to an existing scheduled transaction',
+      description:
+        'Submits a ScheduleSignTransaction to contribute the operator\'s signature to the ' +
+        'given schedule.  When the last required signature is added the network automatically ' +
+        'executes the inner transaction.',
+      options: [
+        {
+          name: 'schedule-id',
+          type: OptionType.STRING,
+          description: 'The schedule ID to sign (e.g. 0.0.5678)',
+          required: true,
+        },
+      ],
+      handler: signSchedule,
+      output: {
+        schema: SignOutputSchema,
+        humanTemplate: SIGN_HUMAN_TEMPLATE,
       },
     },
 

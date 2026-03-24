@@ -7,9 +7,15 @@
  */
 export { manifest } from './manifest';
 
+export { ScheduleState, deriveScheduleState, isTerminal } from './lifecycle';
+
 export { createSchedule } from './commands/create/handler';
 export { CreateInputSchema, type CreateInput } from './commands/create/input';
 export { CreateOutputSchema, CREATE_HUMAN_TEMPLATE, type CreateScheduleOutput } from './commands/create/output';
+
+export { signSchedule } from './commands/sign/handler';
+export { SignInputSchema, type SignInput } from './commands/sign/input';
+export { SignOutputSchema, SIGN_HUMAN_TEMPLATE, type SignOutput } from './commands/sign/output';
 
 export { getScheduleStatus } from './commands/status/handler';
 export { StatusInputSchema, type StatusInput } from './commands/status/input';

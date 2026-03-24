@@ -11,6 +11,7 @@ import type {
 
 import { Status } from '@/core/shared/constants';
 import { formatError } from '@/core/utils/errors';
+import { deriveScheduleState } from '../../lifecycle';
 
 import { StatusInputSchema } from './input';
 import type { StatusOutput } from './output';
@@ -23,6 +24,12 @@ interface MirrorScheduleResponse {
   memo?: string;
   consensus_timestamp?: string;
   expiration_time?: string;
+  /** Signatures that have already been submitted for this schedule. */
+  signatures?: Array<{
+    consensus_timestamp?: string;
+    public_key_prefix?: string;
+    type?: string;
+  }>;
 }
 
 export async function getScheduleStatus(
@@ -62,21 +69,14 @@ export async function getScheduleStatus(
 
     const executed = data.executed_timestamp !== null && data.executed_timestamp !== undefined;
     const deleted = Boolean(data.deleted);
-
-    let state: StatusOutput['state'];
-    if (executed) {
-      state = 'EXECUTED';
-    } else if (deleted) {
-      state = 'DELETED';
-    } else {
-      state = 'PENDING';
-    }
+    const state = deriveScheduleState(data.executed_timestamp, deleted);
 
     const output: StatusOutput = {
       scheduleId,
       state,
       executed,
       deleted,
+      signaturesCollected: data.signatures?.length ?? 0,
       createdAt: data.consensus_timestamp
         ? new Date(Number(data.consensus_timestamp.split('.')[0]) * 1000).toISOString()
         : undefined,

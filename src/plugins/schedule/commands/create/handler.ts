@@ -20,6 +20,9 @@ import {
   TransferTransaction,
 } from '@hashgraph/sdk';
 
+/** Static fee estimate (tinybars) for a ScheduleCreateTransaction (~$0.01 USD). */
+const SCHEDULE_CREATE_FEE_ESTIMATE_TINYBARS = '100000';
+
 import { Status } from '@/core/shared/constants';
 import { formatError } from '@/core/utils/errors';
 
@@ -41,6 +44,7 @@ export async function createSchedule(
   const validArgs = CreateInputSchema.parse(args.args);
 
   const expirySeconds = validArgs['expiry-seconds'];
+  const isDryRun = validArgs['dry-run'];
   const network = api.network.getCurrentNetwork();
   const operator = api.network.getCurrentOperatorOrThrow();
 
@@ -67,9 +71,29 @@ export async function createSchedule(
       scheduleTx.setScheduleMemo(validArgs.memo);
     }
 
+    // ── 4. Dry-run short-circuit ──────────────────────────────────────────────
+    if (isDryRun) {
+      logger.info(
+        `Dry run — HBAR transfer to ${validArgs.to} (${validArgs.amount} tinybars), ` +
+        `expiry ${expirySeconds}s. Transaction NOT submitted.`,
+      );
+      const output: CreateScheduleOutput = {
+        payer: operator.accountId,
+        expirySeconds,
+        network,
+        memo: validArgs.memo,
+        dryRun: true,
+        feeEstimateTinybars: SCHEDULE_CREATE_FEE_ESTIMATE_TINYBARS,
+      };
+      return {
+        status: Status.Success,
+        outputJson: JSON.stringify(output),
+      };
+    }
+
     logger.info(`Creating scheduled HBAR transfer → ${validArgs.to} (${validArgs.amount} tinybars)`);
 
-    // ── 4. Sign and submit via CoreAPI ────────────────────────────────────────
+    // ── 5. Sign and submit via CoreAPI ────────────────────────────────────────
     const result = await api.txExecution.signAndExecute(scheduleTx);
 
     if (!result.success) {

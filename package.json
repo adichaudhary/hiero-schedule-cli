@@ -1,0 +1,40 @@
+{
+  "name": "@hiero-ledger/schedule-plugin",
+  "version": "1.0.0",
+  "description": "Hedera scheduled transaction plugin for hiero-cli",
+  "license": "Apache-2.0",
+  "main": "dist/plugins/schedule/index.js",
+  "types": "dist/plugins/schedule/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "jest",
+    "test:coverage": "jest --coverage"
+  },
+  "peerDependencies": {
+    "@hashgraph/sdk": "^2.0.0",
+    "zod": "^3.0.0"
+  },
+  "devDependencies": {
+    "@hashgraph/sdk": "^2.60.0",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "typescript": "^5.5.0",
+    "zod": "^3.23.8"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/__tests__/unit/**/*.test.ts"],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "globals": {
+      "ts-jest": {
+        "tsconfig": "tsconfig.test.json"
+      }
+    }
+  }
+}
