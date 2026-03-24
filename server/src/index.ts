@@ -5,12 +5,18 @@
  * scheduled transactions without exposing private keys to the browser.
  *
  * Endpoints:
- *   POST /api/schedules          — create a scheduled HBAR transfer
- *   POST /api/schedules/:id/sign — sign an existing schedule
+ *   POST /api/schedules              — create a scheduled HBAR transfer
+ *   POST /api/schedules/recurring    — create N recurring scheduled transfers
+ *   POST /api/schedules/:id/sign     — sign an existing schedule
+ *   GET  /api/registry               — list locally tracked schedules
  *
  * ⚠️  For local development only. Never deploy this with real private keys
  *     over an untrusted network.
  */
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import {
@@ -48,7 +54,7 @@ interface CreateBody {
   privateKey: string;
   network?: string;
   to: string;
-  amount: string;       // tinybars as a string
+  amount: string;
   memo?: string;
   expirySeconds?: number;
 }
@@ -114,6 +120,86 @@ app.post('/api/schedules', async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /api/schedules/recurring — create N recurring transfers ──────────────
+
+interface RecurringBody {
+  accountId: string;
+  privateKey: string;
+  network?: string;
+  to: string;
+  amount: string;
+  count: number;
+  intervalSeconds?: number;
+  firstExpirySeconds?: number;
+  memo?: string;
+}
+
+app.post('/api/schedules/recurring', async (req: Request, res: Response) => {
+  const {
+    accountId,
+    privateKey,
+    network = 'testnet',
+    to,
+    amount,
+    count,
+    intervalSeconds = 2_592_000,
+    firstExpirySeconds = 2_592_000,
+    memo,
+  } = req.body as RecurringBody;
+
+  if (!accountId || !privateKey || !to || !amount || !count) {
+    res.status(400).json({ error: 'accountId, privateKey, to, amount, and count are required' });
+    return;
+  }
+
+  if (!/^\d+$/.test(amount)) {
+    res.status(400).json({ error: 'amount must be a non-negative integer string (tinybars)' });
+    return;
+  }
+
+  const total = Math.min(Number(count), 50);
+  const results: Array<{ index: number; scheduleId: string; transactionId: string; expirySeconds: number }> = [];
+  const errors:  Array<{ index: number; error: string }> = [];
+
+  for (let i = 0; i < total; i++) {
+    const client = buildClient(network, accountId, privateKey);
+    try {
+      const expirySeconds = firstExpirySeconds + i * intervalSeconds;
+      const scheduleMemo  = memo
+        ? `${memo} (${i + 1} of ${total})`
+        : `Recurring payment (${i + 1} of ${total})`;
+
+      const innerTx = new TransferTransaction()
+        .addHbarTransfer(to, Hbar.fromTinybars(amount))
+        .addHbarTransfer(accountId, Hbar.fromTinybars(`-${amount}`));
+
+      const expiresAt = new Timestamp(Math.floor(Date.now() / 1000) + expirySeconds, 0);
+
+      const scheduleTx = new ScheduleCreateTransaction()
+        .setScheduledTransaction(innerTx)
+        .setExpirationTime(expiresAt)
+        .setWaitForExpiry(true)
+        .setScheduleMemo(scheduleMemo);
+
+      const response = await scheduleTx.execute(client);
+      const receipt  = await response.getReceipt(client);
+
+      results.push({
+        index:         i + 1,
+        scheduleId:    receipt.scheduleId?.toString() ?? '',
+        transactionId: response.transactionId.toString(),
+        expirySeconds,
+      });
+    } catch (err) {
+      errors.push({ index: i + 1, error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      client.close();
+    }
+  }
+
+  res.json({ results, errors, total, succeeded: results.length });
+});
+
 // ── POST /api/schedules/:id/sign — sign an existing schedule ─────────────────
 
 interface SignBody {
@@ -123,7 +209,7 @@ interface SignBody {
 }
 
 app.post('/api/schedules/:id/sign', async (req: Request, res: Response) => {
-  const scheduleId = req.params['id'];
+  const scheduleId = req.params['id'] as string;
   const { accountId, privateKey, network = 'testnet' } = req.body as SignBody;
 
   if (!accountId || !privateKey) {
@@ -148,6 +234,23 @@ app.post('/api/schedules/:id/sign', async (req: Request, res: Response) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   } finally {
     client.close();
+  }
+});
+
+// ── GET /api/registry — list locally tracked schedules ───────────────────────
+
+app.get('/api/registry', (_req: Request, res: Response) => {
+  const registryPath = path.join(os.homedir(), '.hiero', 'schedule-registry.json');
+  try {
+    if (!fs.existsSync(registryPath)) {
+      res.json([]);
+      return;
+    }
+    const content = fs.readFileSync(registryPath, 'utf-8');
+    const data = JSON.parse(content) as unknown;
+    res.json(Array.isArray(data) ? data : []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read local registry' });
   }
 });
 

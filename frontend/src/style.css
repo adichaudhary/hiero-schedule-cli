@@ -318,6 +318,66 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .log-msg.warn    { color: var(--yellow); }
 .log-msg.error   { color: var(--red); }
 
+/* ── Mode toggle (single / recurring) ── */
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.mode-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 0;
+  padding: 8px 18px;
+  font-size: 13px;
+}
+.mode-btn:hover { color: var(--text); background: var(--surface2); }
+.mode-btn.active { background: var(--accent); color: #fff; }
+
+/* ── Registry ── */
+.registry-header {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 6px;
+}
+.registry-hint { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+.registry-row { cursor: pointer; }
+.registry-row:hover td { background: var(--surface2); }
+
+.tag {
+  display: inline-block;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 11px;
+  margin-right: 3px;
+}
+
+.mono { font-family: 'Courier New', monospace; }
+
+/* ── Viz ── */
+.viz-output {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre;
+  overflow-x: auto;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+/* ── Header actions ── */
+.header-actions { display: flex; align-items: center; gap: 10px; }
+
 /* ── Error box ── */
 .error-box {
   background: #ef444415; border: 1px solid #ef444440;

@@ -12,7 +12,7 @@ const API_BASE = 'http://localhost:3001';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'status' | 'signers' | 'watch';
+type Tab = 'status' | 'signers' | 'watch' | 'viz';
 type Network = 'testnet' | 'mainnet' | 'previewnet';
 
 let currentTab: Tab = 'status';
@@ -20,6 +20,7 @@ let currentScheduleId = '';
 let currentNetwork: Network = 'testnet';
 let activePoller: ScheduleStatusPoller | null = null;
 let createFormVisible = false;
+let createMode: 'single' | 'recurring' = 'single';
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ const networkSelect = document.getElementById('network-select') as HTMLSelectEle
 const scheduleInput = document.getElementById('schedule-input') as HTMLInputElement;
 const searchBtn     = document.getElementById('search-btn')     as HTMLButtonElement;
 const createBtn     = document.getElementById('create-btn')     as HTMLButtonElement;
+const registryBtn   = document.getElementById('registry-btn')   as HTMLButtonElement;
 const tabsEl        = document.getElementById('tabs')           as HTMLDivElement;
 const panelEl       = document.getElementById('panel')          as HTMLDivElement;
 const createFormEl  = document.getElementById('create-form')    as HTMLDivElement;
@@ -56,7 +58,7 @@ function showError(msg: string): void {
   panelEl.innerHTML = `<div class="error-box">${msg}</div>`;
 }
 
-// ── Backend API calls ─────────────────────────────────────────────────────────
+// ── Backend API ───────────────────────────────────────────────────────────────
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -69,6 +71,13 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`);
+  const data = await res.json() as { error?: string } & T;
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Server error ${res.status}`);
+  return data;
+}
+
 // ── Create form ───────────────────────────────────────────────────────────────
 
 function toggleCreateForm(): void {
@@ -76,12 +85,19 @@ function toggleCreateForm(): void {
   createFormEl.style.display = createFormVisible ? 'block' : 'none';
   createBtn.textContent = createFormVisible ? '✕ Cancel' : '+ Create';
   createBtn.classList.toggle('cancel', createFormVisible);
-  if (!createFormVisible) return;
+  if (createFormVisible) renderCreateForm();
+}
 
+function renderCreateForm(): void {
   createFormEl.innerHTML = `
     <div class="create-form-inner">
       <h3 class="form-title">Create Scheduled Transfer</h3>
       <p class="form-note">⚠️ Local dev only — credentials are sent to your local server at port 3001.</p>
+
+      <div class="mode-toggle">
+        <button class="mode-btn ${createMode === 'single' ? 'active' : ''}" data-mode="single">Single Transfer</button>
+        <button class="mode-btn ${createMode === 'recurring' ? 'active' : ''}" data-mode="recurring">Recurring</button>
+      </div>
 
       <div class="form-section-label">Your Credentials (Payer)</div>
       <div class="form-row">
@@ -117,14 +133,39 @@ function toggleCreateForm(): void {
         </div>
       </div>
 
+      ${createMode === 'recurring' ? `
+      <div class="form-section-label">Recurring Options</div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>Number of Payments</label>
+          <input id="cf-count" type="number" placeholder="12" value="3" min="1" max="50" />
+        </div>
+        <div class="form-field">
+          <label>Interval Between Payments (seconds)</label>
+          <input id="cf-interval" type="number" placeholder="2592000" value="2592000" min="1" />
+        </div>
+      </div>` : ''}
+
       <div class="form-actions">
-        <button id="cf-submit" class="btn-primary">Create Schedule →</button>
+        <button id="cf-submit" class="btn-primary">
+          ${createMode === 'recurring' ? 'Create Recurring Schedules →' : 'Create Schedule →'}
+        </button>
         <div id="cf-status" class="form-status"></div>
       </div>
     </div>
   `;
 
-  document.getElementById('cf-submit')!.addEventListener('click', handleCreate);
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      createMode = (btn as HTMLElement).dataset['mode'] as 'single' | 'recurring';
+      renderCreateForm();
+    });
+  });
+
+  document.getElementById('cf-submit')!.addEventListener('click', () => {
+    if (createMode === 'recurring') void handleRecurring();
+    else void handleCreate();
+  });
 }
 
 async function handleCreate(): Promise<void> {
@@ -146,29 +187,16 @@ async function handleCreate(): Promise<void> {
   statusEl.innerHTML = '<span class="form-info"><span class="spinner-inline"></span> Submitting to Hedera…</span>';
 
   try {
-    const result = await apiPost<{
-      scheduleId: string;
-      transactionId: string;
-      network: string;
-      expiresAt: string;
-    }>('/api/schedules', {
-      accountId,
-      privateKey,
-      network: currentNetwork,
-      to,
-      amount,
-      memo: memo || undefined,
-      expirySeconds: expiry || 2_592_000,
+    const result = await apiPost<{ scheduleId: string }>('/api/schedules', {
+      accountId, privateKey, network: currentNetwork,
+      to, amount, memo: memo || undefined, expirySeconds: expiry || 2_592_000,
     });
 
     statusEl.innerHTML = `<span class="form-success">✓ Created: <strong>${result.scheduleId}</strong></span>`;
-
-    // Auto-load the new schedule after a short delay
     setTimeout(() => {
       toggleCreateForm();
       scheduleInput.value = result.scheduleId;
       currentScheduleId = result.scheduleId;
-      currentTab = 'status';
       tabsEl.style.display = 'flex';
       setActiveTab('status');
       void renderStatus();
@@ -179,7 +207,138 @@ async function handleCreate(): Promise<void> {
   }
 }
 
-// ── Sign section (shown in status tab for PENDING schedules) ──────────────────
+async function handleRecurring(): Promise<void> {
+  const submitBtn  = document.getElementById('cf-submit')  as HTMLButtonElement;
+  const statusEl   = document.getElementById('cf-status')  as HTMLDivElement;
+  const accountId  = (document.getElementById('cf-account')  as HTMLInputElement).value.trim();
+  const privateKey = (document.getElementById('cf-key')      as HTMLInputElement).value.trim();
+  const to         = (document.getElementById('cf-to')       as HTMLInputElement).value.trim();
+  const amount     = (document.getElementById('cf-amount')   as HTMLInputElement).value.trim();
+  const memo       = (document.getElementById('cf-memo')     as HTMLInputElement).value.trim();
+  const expiry     = parseInt((document.getElementById('cf-expiry')    as HTMLInputElement).value, 10);
+  const count      = parseInt((document.getElementById('cf-count')     as HTMLInputElement).value, 10);
+  const interval   = parseInt((document.getElementById('cf-interval')  as HTMLInputElement).value, 10);
+
+  if (!accountId || !privateKey || !to || !amount || !count) {
+    statusEl.innerHTML = '<span class="form-error">All fields except memo are required.</span>';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  statusEl.innerHTML = `<span class="form-info"><span class="spinner-inline"></span> Creating ${count} schedules…</span>`;
+
+  try {
+    const result = await apiPost<{
+      results: Array<{ index: number; scheduleId: string }>;
+      errors:  Array<{ index: number; error: string }>;
+      succeeded: number;
+      total: number;
+    }>('/api/schedules/recurring', {
+      accountId, privateKey, network: currentNetwork,
+      to, amount, count, memo: memo || undefined,
+      firstExpirySeconds: expiry || 2_592_000,
+      intervalSeconds: interval || 2_592_000,
+    });
+
+    const rows = result.results.map((r) =>
+      `<tr><td>${r.index}</td><td class="mono">${r.scheduleId}</td><td><span class="badge badge-pending">PENDING</span></td></tr>`
+    ).join('');
+
+    const errRows = result.errors.map((e) =>
+      `<tr><td>${e.index}</td><td colspan="2" class="form-error">${e.error}</td></tr>`
+    ).join('');
+
+    statusEl.innerHTML = `
+      <div style="margin-top:14px">
+        <span class="form-success">✓ ${result.succeeded} of ${result.total} schedules created</span>
+        <table class="signers-table" style="margin-top:10px">
+          <thead><tr><th>#</th><th>Schedule ID</th><th>State</th></tr></thead>
+          <tbody>${rows}${errRows}</tbody>
+        </table>
+      </div>
+    `;
+    submitBtn.disabled = false;
+  } catch (err) {
+    statusEl.innerHTML = `<span class="form-error">✗ ${(err as Error).message}</span>`;
+    submitBtn.disabled = false;
+  }
+}
+
+// ── Registry view ─────────────────────────────────────────────────────────────
+
+async function showRegistry(): Promise<void> {
+  if (createFormVisible) toggleCreateForm();
+  tabsEl.style.display = 'none';
+  currentScheduleId = '';
+  showLoading('Loading registry…');
+
+  try {
+    const entries = await apiGet<Array<{
+      scheduleId: string;
+      network: string;
+      state: string;
+      createdAt: string;
+      expiresAt?: string;
+      memo?: string;
+      tags?: string[];
+    }>>('/api/registry');
+
+    if (entries.length === 0) {
+      panelEl.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">◈</div>
+          <p>No schedules in local registry yet. Create one to get started.</p>
+        </div>`;
+      return;
+    }
+
+    const rows = entries.map((e) => `
+      <tr class="registry-row" data-id="${e.scheduleId}" data-network="${e.network}">
+        <td class="mono">${e.scheduleId}</td>
+        <td>${e.network}</td>
+        <td><span class="badge ${badgeClass(e.state)}">${e.state}</span></td>
+        <td>${fmt(e.createdAt)}</td>
+        <td>${fmt(e.expiresAt ?? null)}</td>
+        <td>${(e.tags ?? []).map((t) => `<span class="tag">${t}</span>`).join(' ') || '—'}</td>
+      </tr>
+    `).join('');
+
+    panelEl.innerHTML = `
+      <div class="registry-header">
+        <span class="form-title">Local Registry</span>
+        <span class="signers-count">${entries.length} schedule(s)</span>
+      </div>
+      <p class="registry-hint">Click a row to load that schedule.</p>
+      <table class="signers-table">
+        <thead>
+          <tr>
+            <th>Schedule ID</th><th>Network</th><th>State</th>
+            <th>Created</th><th>Expires</th><th>Tags</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    document.querySelectorAll('.registry-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        const id  = (row as HTMLElement).dataset['id']!;
+        const net = (row as HTMLElement).dataset['network'] as Network;
+        scheduleInput.value = id;
+        currentScheduleId   = id;
+        currentNetwork      = net;
+        networkSelect.value = net;
+        tabsEl.style.display = 'flex';
+        setActiveTab('status');
+        void renderStatus();
+      });
+    });
+  } catch (err) {
+    showError(`Could not load registry — is the local server running?\n${(err as Error).message}`);
+  }
+}
+
+// ── Sign section ──────────────────────────────────────────────────────────────
 
 function signSectionHTML(): string {
   return `
@@ -204,12 +363,12 @@ function signSectionHTML(): string {
 }
 
 function bindSignSection(): void {
-  document.getElementById('sign-submit')?.addEventListener('click', handleSign);
+  document.getElementById('sign-submit')?.addEventListener('click', () => void handleSign());
 }
 
 async function handleSign(): Promise<void> {
-  const submitBtn  = document.getElementById('sign-submit') as HTMLButtonElement;
-  const statusEl   = document.getElementById('sign-status') as HTMLDivElement;
+  const submitBtn  = document.getElementById('sign-submit')  as HTMLButtonElement;
+  const statusEl   = document.getElementById('sign-status')  as HTMLDivElement;
   const accountId  = (document.getElementById('sign-account') as HTMLInputElement).value.trim();
   const privateKey = (document.getElementById('sign-key')     as HTMLInputElement).value.trim();
 
@@ -222,12 +381,7 @@ async function handleSign(): Promise<void> {
   statusEl.innerHTML = '<span class="form-info"><span class="spinner-inline"></span> Signing…</span>';
 
   try {
-    await apiPost(`/api/schedules/${currentScheduleId}/sign`, {
-      accountId,
-      privateKey,
-      network: currentNetwork,
-    });
-
+    await apiPost(`/api/schedules/${currentScheduleId}/sign`, { accountId, privateKey, network: currentNetwork });
     statusEl.innerHTML = '<span class="form-success">✓ Signed — refreshing status…</span>';
     setTimeout(() => void renderStatus(), 1500);
   } catch (err) {
@@ -236,7 +390,7 @@ async function handleSign(): Promise<void> {
   }
 }
 
-// ── Tab rendering ─────────────────────────────────────────────────────────────
+// ── Tab renderers ─────────────────────────────────────────────────────────────
 
 async function renderStatus(): Promise<void> {
   showLoading();
@@ -276,11 +430,7 @@ function statusHTML(s: BrowserScheduleStatus): string {
         <div class="stat-label">Expires At</div>
         <div class="stat-value">${fmt(s.expiresAt)}</div>
       </div>
-      ${s.memo ? `
-      <div class="stat-card memo-card">
-        <div class="stat-label">Memo</div>
-        <div class="stat-value">${s.memo}</div>
-      </div>` : ''}
+      ${s.memo ? `<div class="stat-card memo-card"><div class="stat-label">Memo</div><div class="stat-value">${s.memo}</div></div>` : ''}
     </div>
   `;
 }
@@ -306,8 +456,7 @@ function signersHTML(s: BrowserScheduleSigners): string {
           <td>${sig.consensusTimestamp
             ? fmt(new Date(Number(sig.consensusTimestamp.split('.')[0]) * 1000).toISOString())
             : '—'}</td>
-        </tr>
-      `).join('');
+        </tr>`).join('');
 
   return `
     <div class="signers-header">
@@ -315,12 +464,71 @@ function signersHTML(s: BrowserScheduleSigners): string {
       <span class="signers-count">${s.signaturesCollected} signature(s) collected</span>
     </div>
     <table class="signers-table">
-      <thead>
-        <tr><th>#</th><th>Public Key Prefix</th><th>Type</th><th>Signed At</th></tr>
-      </thead>
+      <thead><tr><th>#</th><th>Public Key Prefix</th><th>Type</th><th>Signed At</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
+}
+
+async function renderViz(): Promise<void> {
+  showLoading();
+  try {
+    const s = await fetchScheduleStatus(currentScheduleId, currentNetwork);
+    panelEl.innerHTML = vizHTML(s);
+  } catch (e) {
+    showError((e as Error).message);
+  }
+}
+
+function vizHTML(s: BrowserScheduleStatus): string {
+  const stateIcon =
+    s.state === 'EXECUTED' ? '✓' :
+    s.state === 'DELETED'  ? '✗' : '⏳';
+
+  // Timeline bar
+  let timelineBar = '';
+  let pctLabel = '';
+  if (s.createdAt && s.expiresAt) {
+    const created  = new Date(s.createdAt).getTime();
+    const expires  = new Date(s.expiresAt).getTime();
+    const now      = Date.now();
+    const pct      = Math.max(0, Math.min(100, ((now - created) / (expires - created)) * 100));
+    const filled   = Math.round(pct / 100 * 40);
+    const empty    = 40 - filled;
+    timelineBar = '█'.repeat(filled) + '░'.repeat(empty);
+    pctLabel = `${Math.round(pct)}% of expiry window elapsed`;
+  }
+
+  // Sig bar
+  const sigBar = s.signaturesCollected > 0
+    ? '█'.repeat(Math.min(s.signaturesCollected * 5, 40)) + '░'.repeat(Math.max(0, 40 - s.signaturesCollected * 5))
+    : '░'.repeat(40);
+
+  const WIDTH = 64;
+  const line = '─'.repeat(WIDTH);
+
+  const rows = [
+    `┌${line}┐`,
+    `│  Schedule Lifecycle: ${s.scheduleId.padEnd(WIDTH - 22)}  │`,
+    `├${line}┤`,
+    `│                                                                  │`,
+    `│  CREATED ──────────── PENDING ──────────── ${`${stateIcon} ${s.state}`.padEnd(18)}│`,
+    `│                                                                  │`,
+    `├${line}┤`,
+    `│  State:         ${ s.state.padEnd(WIDTH - 17)}│`,
+    `│  Signatures:    ${ String(s.signaturesCollected).padEnd(WIDTH - 17)}│`,
+    s.createdAt ? `│  Created:       ${new Date(s.createdAt).toLocaleString().padEnd(WIDTH - 17)}│` : null,
+    s.expiresAt ? `│  Expires:       ${new Date(s.expiresAt).toLocaleString().padEnd(WIDTH - 17)}│` : null,
+    s.memo      ? `│  Memo:          ${s.memo.slice(0, WIDTH - 17).padEnd(WIDTH - 17)}│` : null,
+    `│                                                                  │`,
+    timelineBar ? `│  Time elapsed:  ${timelineBar}│` : null,
+    timelineBar ? `│                 ${pctLabel.padEnd(WIDTH - 17)}│` : null,
+    `│  Sig progress:  ${sigBar}│`,
+    `│                                                                  │`,
+    `└${line}┘`,
+  ].filter(Boolean) as string[];
+
+  return `<pre class="viz-output">${rows.join('\n')}</pre>`;
 }
 
 function renderWatch(): void {
@@ -350,9 +558,9 @@ function watchHTML(): string {
 }
 
 function bindWatchControls(): void {
-  const startBtn      = document.getElementById('watch-start-btn')  as HTMLButtonElement;
-  const stopBtn       = document.getElementById('watch-stop-btn')   as HTMLButtonElement;
-  const intervalInput = document.getElementById('interval-input')   as HTMLInputElement;
+  const startBtn      = document.getElementById('watch-start-btn') as HTMLButtonElement;
+  const stopBtn       = document.getElementById('watch-stop-btn')  as HTMLButtonElement;
+  const intervalInput = document.getElementById('interval-input')  as HTMLInputElement;
 
   startBtn.addEventListener('click', () => {
     const intervalMs = Math.max(2, Number(intervalInput.value)) * 1000;
@@ -423,6 +631,7 @@ function renderCurrentTab(): void {
   if (currentTab === 'status')  void renderStatus();
   if (currentTab === 'signers') void renderSigners();
   if (currentTab === 'watch')   renderWatch();
+  if (currentTab === 'viz')     void renderViz();
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -430,8 +639,6 @@ function renderCurrentTab(): void {
 function doSearch(): void {
   const id = scheduleInput.value.trim();
   if (!id) return;
-
-  // Close create form if open
   if (createFormVisible) toggleCreateForm();
 
   currentScheduleId = id;
@@ -448,6 +655,7 @@ function doSearch(): void {
 searchBtn.addEventListener('click', doSearch);
 scheduleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 createBtn.addEventListener('click', toggleCreateForm);
+registryBtn.addEventListener('click', () => void showRegistry());
 
 tabsEl.addEventListener('click', (e) => {
   const tab = (e.target as HTMLElement).dataset['tab'] as Tab | undefined;

@@ -13,11 +13,14 @@
           <span class="logo-icon">◈</span>
           <span class="logo-text">Hiero Schedule</span>
         </div>
-        <select id="network-select">
-          <option value="testnet">Testnet</option>
-          <option value="mainnet">Mainnet</option>
-          <option value="previewnet">Previewnet</option>
-        </select>
+        <div class="header-actions">
+          <select id="network-select">
+            <option value="testnet">Testnet</option>
+            <option value="mainnet">Mainnet</option>
+            <option value="previewnet">Previewnet</option>
+          </select>
+          <button id="registry-btn" class="btn-outline">☰ Registry</button>
+        </div>
       </div>
     </header>
 
@@ -34,13 +37,13 @@
         <button id="create-btn" class="btn-outline">+ Create</button>
       </div>
 
-      <!-- Create form (hidden by default) -->
       <div id="create-form" style="display:none"></div>
 
       <div class="tabs" id="tabs" style="display:none">
         <button class="tab active" data-tab="status">Status</button>
         <button class="tab" data-tab="signers">Signers</button>
         <button class="tab" data-tab="watch">Watch</button>
+        <button class="tab" data-tab="viz">Viz</button>
       </div>
 
       <div id="panel" class="panel">
